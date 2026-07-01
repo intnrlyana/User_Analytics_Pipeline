@@ -10,7 +10,7 @@ The intended flow is:
 CSV event logs -> validation and cleaning -> SQLite storage -> session metrics -> FastAPI API
 ```
 
-Stage 1 created the project foundation, database schema, sample data generator, and data profiling script. Stage 2 added CSV ingestion, row validation, rejected-row logging, and idempotent loading into SQLite. Stage 3 adds session-level transformation and loading into `session_metrics`.
+Stage 1 created the project foundation, database schema, sample data generator, and data profiling script. Stage 2 added CSV ingestion, row validation, rejected-row logging, and idempotent loading into SQLite. Stage 3 added session-level transformation and loading into `session_metrics`. Stage 4 adds a lightweight FastAPI serving layer.
 
 ## Assessment Mapping
 
@@ -21,7 +21,7 @@ This project addresses the assessment objective by setting up the first pieces o
 - Store raw events and session-level metrics in a relational database.
 - Prepare the codebase for validation, transformation, and API access.
 
-The current project intentionally stops before building the API so each part can remain reviewable.
+The current project exposes the prepared analytics through a queryable REST API.
 
 ## Architecture Overview
 
@@ -39,11 +39,14 @@ The project is organized around one responsibility per file:
 - `src/load_metrics.py`: upserts transformed metrics into SQLite.
 - `src/run_transform.py`: command-line entry point for Stage 3 transformation.
 - `src/run_pipeline.py`: runs ingestion, event loading, transformation, and metric loading.
+- `src/query_service.py`: database read/query layer for API endpoints.
+- `src/api_schemas.py`: Pydantic response models.
+- `src/main.py`: FastAPI application and route definitions.
 - `src/profile_data.py`: prints data quality checks for the CSV.
 - `sql/schema.sql`: relational database schema.
-- `tests/`: lightweight pytest coverage for validation, loading, and transformation logic.
+- `tests/`: lightweight pytest coverage for validation, loading, transformation logic, and API behavior.
 
-Future stages will add REST API modules.
+Future stages could add deployment packaging, authentication, and richer monitoring.
 
 ## Database Choice
 
@@ -154,6 +157,122 @@ Run the full local pipeline when you want ingestion, validation, event loading, 
 python src/run_pipeline.py
 ```
 
+## Stage 4: API Design and Serving Layer
+
+Stage 4 adds a small FastAPI app on top of SQLite. The API reads from the database only; it does not trigger ingestion or transformation automatically.
+
+Prepare data before starting the API:
+
+```bash
+python src/run_pipeline.py
+```
+
+Start the API:
+
+```bash
+uvicorn src.main:app --reload
+```
+
+Open Swagger UI:
+
+```text
+http://localhost:8000/docs
+```
+
+No frontend is required for this assessment. The deliverable is a queryable API, and FastAPI's Swagger UI is enough to inspect and test the endpoints locally.
+
+### GET /
+
+Health and API information endpoint.
+
+Example response:
+
+```json
+{
+  "project": "USER_ANALYTICS_PIPELINE",
+  "status": "ok",
+  "endpoints": [
+    "GET /sessions",
+    "GET /sessions/{token}",
+    "GET /metrics/summary"
+  ]
+}
+```
+
+### GET /sessions
+
+Lists session metrics from `session_metrics`.
+
+Query parameters:
+
+- `page`: default `1`, must be at least `1`.
+- `page_size`: default `20`, must be between `1` and `100`.
+
+Example response:
+
+```json
+{
+  "page": 1,
+  "page_size": 20,
+  "total_sessions": 13,
+  "total_pages": 1,
+  "sessions": [
+    {
+      "session_token": "session_001_hash",
+      "total_events": 7,
+      "session_duration_seconds": 360.0,
+      "dominant_device": "tablet",
+      "average_latency_ms": 180.57,
+      "first_event_time": "2026-07-01T09:08:00Z",
+      "last_event_time": "2026-07-01T09:14:00Z"
+    }
+  ]
+}
+```
+
+### GET /sessions/{token}
+
+Returns one session metrics record by `session_token`.
+
+Example response:
+
+```json
+{
+  "session_token": "session_001_hash",
+  "total_events": 7,
+  "session_duration_seconds": 360.0,
+  "dominant_device": "tablet",
+  "average_latency_ms": 180.57,
+  "first_event_time": "2026-07-01T09:08:00Z",
+  "last_event_time": "2026-07-01T09:14:00Z"
+}
+```
+
+### GET /metrics/summary
+
+Returns dataset-wide metrics using both `events` and `session_metrics`.
+
+Example response:
+
+```json
+{
+  "total_events": 98,
+  "average_session_duration_seconds": 332.31,
+  "event_type_breakdown": {
+    "api_call": 30,
+    "button_click": 33,
+    "page_view": 35
+  },
+  "p95_latency_ms": 279.15
+}
+```
+
+API error handling:
+
+- Missing session token: `404` with a clear message.
+- Invalid pagination parameters: `422` through FastAPI request validation.
+- Empty database: `/sessions` returns an empty list, and `/metrics/summary` returns zero values with `p95_latency_ms` as `null`.
+
 ## How to Run Stage 1
 
 Create and activate a virtual environment if needed, then install dependencies:
@@ -184,8 +303,8 @@ The database file is created at `data/user_analytics.db`.
 
 ## Planned Next Steps
 
-- Expose query endpoints through a FastAPI REST API.
-- Add API-level tests for query behavior.
+- Add packaging notes for deployment.
+- Add authentication and rate limiting if the API is exposed outside local review.
 
 ## Production Considerations
 
