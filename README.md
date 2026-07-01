@@ -72,6 +72,8 @@ USER_ANALYTICS_PIPELINE/
 |-- requirements.txt
 |-- data/
 |   `-- sample_events.csv
+|-- docs/
+|   `-- flowchart-drawio.png
 |-- sql/
 |   `-- schema.sql
 |-- src/
@@ -364,18 +366,7 @@ The tests use temporary SQLite databases where needed, so they do not require a 
 
 Production orchestration could follow this flow:
 
-```text
-CSV available
--> scheduled trigger
--> ingestion
--> validation
--> rejected row logging
--> load events
--> transform session metrics
--> upsert session_metrics
--> API serves updated results
--> logs, retries, and alerts
-```
+![Production pipeline orchestration flowchart](docs/flowchart-drawio.png)
 
 In local development, run the flow manually with:
 

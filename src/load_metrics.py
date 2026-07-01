@@ -29,7 +29,7 @@ ON CONFLICT(session_token) DO UPDATE SET
     first_event_time = excluded.first_event_time,
     last_event_time = excluded.last_event_time,
     updated_at = CURRENT_TIMESTAMP;
-"""
+""" 
 
 
 def load_session_metrics(
@@ -40,6 +40,7 @@ def load_session_metrics(
 
     with get_connection() as connection:
         for metric in session_metrics:
+            # session_token is the primary key, so reruns refresh existing metrics.
             connection.execute(UPSERT_SESSION_METRIC_SQL, metric)
 
     attempted_upserts = len(session_metrics)

@@ -20,6 +20,7 @@ from src.query_service import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure tables exist before the API starts serving database-backed routes.
     initialise_database()
     yield
 

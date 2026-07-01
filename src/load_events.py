@@ -32,6 +32,7 @@ def load_events(
 
     with get_connection() as connection:
         for row in valid_rows:
+            # event_id is the primary key, so duplicates are skipped safely.
             cursor = connection.execute(INSERT_EVENT_SQL, row)
             inserted_rows += cursor.rowcount
 

@@ -106,6 +106,7 @@ def calculate_p95_latency(latencies: list[int]) -> float | None:
     if not latencies:
         return None
 
+    # SQLite has no built-in percentile aggregate, so p95 is calculated in Python.
     sorted_latencies = sorted(latencies)
     percentile_position = 0.95 * (len(sorted_latencies) - 1)
     lower_index = math.floor(percentile_position)
@@ -122,6 +123,7 @@ def calculate_p95_latency(latencies: list[int]) -> float | None:
 
 def get_read_connection() -> sqlite3.Connection:
     connection = database.get_connection()
+    # Row objects allow query results to be converted into response dictionaries.
     connection.row_factory = sqlite3.Row
     return connection
 

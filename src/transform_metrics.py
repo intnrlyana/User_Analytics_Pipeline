@@ -82,6 +82,7 @@ def calculate_session_duration_seconds(
 
 def get_dominant_device(device_types: list[str]) -> str:
     device_counts = Counter(device_types)
+    # Sort by highest count first, then alphabetically for deterministic ties.
     return sorted(device_counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
 
 
