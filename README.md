@@ -6,29 +6,16 @@ The project is intentionally small, modular, and easy to run in a local developm
 
 ## Architecture Overview
 
-```text
-+-------------------+      +--------------------------+      +----------------+
-| Raw CSV Events    | ---> | Ingestion + Validation   | ---> | SQLite events  |
-| sample_events.csv |      | log rejected rows        |      | table          |
-+-------------------+      +--------------------------+      +----------------+
-                                                                    |
-                                                                    v
-                                                           +---------------------+
-                                                           | Session Metrics     |
-                                                           | transformation      |
-                                                           +---------------------+
-                                                                    |
-                                                                    v
-                                                           +---------------------+
-                                                           | SQLite              |
-                                                           | session_metrics     |
-                                                           +---------------------+
-                                                                    |
-                                                                    v
-                                                           +---------------------+
-                                                           | FastAPI API         |
-                                                           | /sessions, summary  |
-                                                           +---------------------+
+```mermaid
+flowchart TD
+    A["Raw CSV events<br/>data/sample_events.csv"] --> B["Ingestion<br/>src/ingestion.py"]
+    B --> C["Validation and cleaning<br/>src/validation.py"]
+    C --> D["Rejected rows log<br/>logs/rejected_rows.csv"]
+    C --> E[("SQLite events table")]
+    E --> F["Session metrics transformation<br/>src/transform_metrics.py"]
+    F --> G[("SQLite session_metrics table")]
+    G --> H["Query service<br/>src/query_service.py"]
+    H --> I["FastAPI API<br/>GET /sessions<br/>GET /sessions/{token}<br/>GET /metrics/summary"]
 ```
 
 ## Quick Start
