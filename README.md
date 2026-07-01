@@ -2,7 +2,7 @@
 
 USER_ANALYTICS_PIPELINE is a lightweight backend data pipeline for application event logs. It ingests raw CSV events, validates and cleans rows, stores valid events in SQLite, transforms them into session-level metrics, and exposes the results through a FastAPI REST API.
 
-The project is intentionally small and reviewer-friendly. The code is split by responsibility so each part of the pipeline can be inspected independently.
+The project is intentionally small, modular, and easy to run in a local development environment. The code is split by responsibility so each part of the pipeline can be inspected independently.
 
 ```text
 CSV event logs
@@ -23,11 +23,11 @@ pip install -r requirements.txt
 python src/generate_sample_data.py
 python src/profile_data.py
 python src/run_pipeline.py
-uvicorn src.main:app --reload
 pytest
+uvicorn src.main:app --reload
 ```
 
-Open Swagger UI after starting the API:
+Open Swagger UI at:
 
 ```text
 http://localhost:8000/docs
@@ -35,7 +35,7 @@ http://localhost:8000/docs
 
 Generated files such as `data/user_analytics.db` and `logs/rejected_rows.csv` are ignored by git.
 
-## Assessment Mapping
+## Implementation Coverage
 
 | Requirement area | How this project satisfies it |
 | --- | --- |
@@ -87,7 +87,7 @@ USER_ANALYTICS_PIPELINE/
 
 ## Database Choice
 
-SQLite is used because it is free, lightweight, serverless, and easy for reviewers to run locally. It is a good fit for this CSV-based batch assessment because there is no database server to install.
+SQLite is used because it is free, lightweight, serverless, and easy to run locally without a separate database server. It is a good fit for this CSV-based batch pipeline because ingestion runs in batches and the API primarily serves read queries over prepared metrics.
 
 For a larger production deployment, PostgreSQL would be the preferred upgrade. It offers stronger concurrency support, better operational tooling, richer indexing options, and more production-ready access control.
 
@@ -222,7 +222,7 @@ Swagger UI:
 http://localhost:8000/docs
 ```
 
-No frontend is required. The assessment asks for a queryable API, and FastAPI Swagger UI is enough to inspect and test the endpoints locally.
+The project exposes analytics through REST endpoints. FastAPI’s Swagger UI is available for local API exploration and testing.
 
 ### GET /
 
@@ -340,7 +340,7 @@ The tests use temporary SQLite databases where needed, so they do not require a 
 - Timestamps are expected to include timezone information and are normalized to UTC.
 - Very high latency values are treated as valid outliers, not rejected records.
 - Duplicate `event_id` rows are ignored to keep ingestion idempotent.
-- SQLite is used for local assessment reproducibility.
+- SQLite is used for local reproducibility.
 - The API serves already-prepared data; it does not trigger ingestion or transformation on request.
 
 ## Production Considerations
