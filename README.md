@@ -10,7 +10,7 @@ The intended flow is:
 CSV event logs -> validation and cleaning -> SQLite storage -> session metrics -> FastAPI API
 ```
 
-Stage 1 creates the project foundation, database schema, sample data generator, and data profiling script. The API and full transformation pipeline are planned for later stages.
+Stage 1 created the project foundation, database schema, sample data generator, and data profiling script. Stage 2 adds CSV ingestion, row validation, rejected-row logging, and idempotent loading into SQLite. The API and session metric transformation are planned for later stages.
 
 ## Assessment Mapping
 
@@ -31,11 +31,15 @@ The project is organized around one responsibility per file:
 - `src/config.py`: central project paths.
 - `src/database.py`: SQLite connection and schema initialization.
 - `src/generate_sample_data.py`: creates realistic sample CSV data with known bad rows.
+- `src/validation.py`: validates and cleans individual event rows.
+- `src/ingestion.py`: reads CSV data and separates valid rows from rejected rows.
+- `src/load_events.py`: loads valid events into SQLite safely.
+- `src/run_ingestion.py`: command-line entry point for Stage 2 ingestion.
 - `src/profile_data.py`: prints data quality checks for the CSV.
 - `sql/schema.sql`: relational database schema.
-- `tests/`: reserved for automated tests in later stages.
+- `tests/`: lightweight pytest coverage for validation and idempotent loading.
 
-Future stages will add validation, cleaning, session metric transformation, loading, and REST API modules.
+Future stages will add session metric transformation and REST API modules.
 
 ## Database Choice
 
@@ -73,6 +77,40 @@ The profiling script reads `data/sample_events.csv` and reports:
 
 This gives a reviewer a quick view of data quality before any cleaning or loading happens.
 
+## Stage 2: Ingestion and Validation
+
+Stage 2 reads `data/sample_events.csv`, validates the expected schema, cleans valid rows, writes malformed rows to `logs/rejected_rows.csv`, and loads valid events into the `events` table.
+
+Validation rules:
+
+- Required columns must exist: `event_id`, `session_token`, `event_type`, `timestamp`, `device_type`, and `response_time_ms`.
+- `event_id`, `session_token`, and `event_type` must not be empty.
+- `timestamp` must be parseable as an ISO 8601 timestamp with timezone information.
+- `device_type` must be `mobile`, `desktop`, or `tablet`. Input is accepted case-insensitively and stored in lowercase.
+- `response_time_ms` must be an integer greater than or equal to zero.
+- Very high `response_time_ms` values are kept during ingestion. They are treated as profiling outliers, not invalid records.
+
+Malformed rows are skipped instead of crashing the pipeline. Each rejected row is written with its source row number and rejection reason so the issue can be reviewed later.
+
+Loading is idempotent because `event_id` is the primary key and inserts use SQLite `INSERT OR IGNORE`. Re-running the same CSV will not duplicate events; duplicate `event_id` values are counted as skipped duplicates.
+
+Run Stage 2 ingestion:
+
+```bash
+python src/run_ingestion.py
+```
+
+Expected terminal output includes:
+
+- total rows read
+- valid row count
+- rejected row count
+- rejection reason summary
+- attempted inserts
+- inserted rows
+- skipped duplicates
+- rejected-row log location
+
 ## How to Run Stage 1
 
 Create and activate a virtual environment if needed, then install dependencies:
@@ -103,11 +141,8 @@ The database file is created at `data/user_analytics.db`.
 
 ## Planned Next Steps
 
-- Add validation rules for required fields, timestamps, device types, and latency values.
-- Clean invalid records into accepted and rejected datasets.
-- Load validated events into SQLite.
 - Transform event rows into session-level metrics.
-- Add tests for validation and transformation logic.
+- Add tests for session metric transformation logic.
 - Expose query endpoints through a FastAPI REST API.
 
 ## Production Considerations
