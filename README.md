@@ -10,7 +10,7 @@ The intended flow is:
 CSV event logs -> validation and cleaning -> SQLite storage -> session metrics -> FastAPI API
 ```
 
-Stage 1 created the project foundation, database schema, sample data generator, and data profiling script. Stage 2 adds CSV ingestion, row validation, rejected-row logging, and idempotent loading into SQLite. The API and session metric transformation are planned for later stages.
+Stage 1 created the project foundation, database schema, sample data generator, and data profiling script. Stage 2 added CSV ingestion, row validation, rejected-row logging, and idempotent loading into SQLite. Stage 3 adds session-level transformation and loading into `session_metrics`.
 
 ## Assessment Mapping
 
@@ -21,7 +21,7 @@ This project addresses the assessment objective by setting up the first pieces o
 - Store raw events and session-level metrics in a relational database.
 - Prepare the codebase for validation, transformation, and API access.
 
-The current stage intentionally stops before building the API so each part can remain reviewable.
+The current project intentionally stops before building the API so each part can remain reviewable.
 
 ## Architecture Overview
 
@@ -35,11 +35,15 @@ The project is organized around one responsibility per file:
 - `src/ingestion.py`: reads CSV data and separates valid rows from rejected rows.
 - `src/load_events.py`: loads valid events into SQLite safely.
 - `src/run_ingestion.py`: command-line entry point for Stage 2 ingestion.
+- `src/transform_metrics.py`: computes session-level metrics from stored events.
+- `src/load_metrics.py`: upserts transformed metrics into SQLite.
+- `src/run_transform.py`: command-line entry point for Stage 3 transformation.
+- `src/run_pipeline.py`: runs ingestion, event loading, transformation, and metric loading.
 - `src/profile_data.py`: prints data quality checks for the CSV.
 - `sql/schema.sql`: relational database schema.
-- `tests/`: lightweight pytest coverage for validation and idempotent loading.
+- `tests/`: lightweight pytest coverage for validation, loading, and transformation logic.
 
-Future stages will add session metric transformation and REST API modules.
+Future stages will add REST API modules.
 
 ## Database Choice
 
@@ -111,6 +115,45 @@ Expected terminal output includes:
 - skipped duplicates
 - rejected-row log location
 
+## Stage 3: Session Metrics Transformation
+
+Stage 3 reads valid events from the SQLite `events` table and computes one metrics row per `session_token`. It does not recompute metrics directly from the CSV. This keeps ingestion and transformation separate and makes the database the source of truth after validation.
+
+Aggregation logic:
+
+- `total_events`: count all stored events for the session.
+- `first_event_time`: earliest event timestamp for the session.
+- `last_event_time`: latest event timestamp for the session.
+- `session_duration_seconds`: difference between `last_event_time` and `first_event_time` in seconds. A one-event session has duration `0`.
+- `dominant_device`: most frequent `device_type` in the session. Ties are resolved alphabetically, so `desktop` comes before `mobile`, and `mobile` comes before `tablet`.
+- `average_latency_ms`: average `response_time_ms`, rounded to two decimal places. Valid high-latency outliers are included in the average.
+
+Metrics loading is idempotent. The `session_metrics` table uses `session_token` as the primary key, and loading uses SQLite upsert logic:
+
+```sql
+INSERT ... ON CONFLICT(session_token) DO UPDATE
+```
+
+Re-running the transformation updates the existing metrics row for each session instead of creating duplicates.
+
+Run ingestion only when the CSV has changed or the `events` table needs to be populated:
+
+```bash
+python src/run_ingestion.py
+```
+
+Run transformation only when valid events are already loaded and session metrics need to be refreshed:
+
+```bash
+python src/run_transform.py
+```
+
+Run the full local pipeline when you want ingestion, validation, event loading, transformation, and metrics loading in one command:
+
+```bash
+python src/run_pipeline.py
+```
+
 ## How to Run Stage 1
 
 Create and activate a virtual environment if needed, then install dependencies:
@@ -141,9 +184,8 @@ The database file is created at `data/user_analytics.db`.
 
 ## Planned Next Steps
 
-- Transform event rows into session-level metrics.
-- Add tests for session metric transformation logic.
 - Expose query endpoints through a FastAPI REST API.
+- Add API-level tests for query behavior.
 
 ## Production Considerations
 
@@ -156,3 +198,26 @@ For production, this design would need stronger operational support:
 - Add automated tests in CI.
 - Add API authentication and rate limiting.
 - Add monitoring for data freshness, volume changes, and latency outliers.
+
+Production orchestration would look like:
+
+```text
+CSV available
+-> scheduled trigger
+-> ingestion
+-> validation
+-> rejected row logging
+-> load events
+-> transform session metrics
+-> upsert session_metrics
+-> API serves updated results
+-> logs, retries, and alerts in production
+```
+
+In local development, run the full flow manually:
+
+```bash
+python src/run_pipeline.py
+```
+
+In production, the same flow could be scheduled using cron, Airflow, GitHub Actions, or a containerised job. Failed runs should be logged and alerted. Idempotency is achieved through `event_id` uniqueness in `events` and `session_token` upserts in `session_metrics`.

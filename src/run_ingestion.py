@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -46,17 +47,33 @@ def print_summary(
     print(f"\nRejected rows written to: {REJECTED_ROWS_PATH}")
 
 
+def run_ingestion_stage(
+    csv_path: Path = SAMPLE_CSV_PATH, initialise_db: bool = True
+) -> dict[str, Any]:
+    if initialise_db:
+        initialise_database()
+
+    ingestion_result = ingest_csv(csv_path)
+    write_rejected_rows(ingestion_result["rejected_rows"])
+    loading_summary = load_events(ingestion_result["valid_rows"], initialise_db=False)
+
+    return {
+        "ingestion_result": ingestion_result,
+        "loading_summary": loading_summary,
+    }
+
+
 def main() -> None:
     try:
-        initialise_database()
-        ingestion_result = ingest_csv(SAMPLE_CSV_PATH)
-        write_rejected_rows(ingestion_result["rejected_rows"])
-        loading_summary = load_events(ingestion_result["valid_rows"], initialise_db=False)
+        stage_result = run_ingestion_stage()
     except (FileNotFoundError, ValueError) as error:
         print(f"Error: {error}")
         raise SystemExit(1) from error
 
-    print_summary(ingestion_result, loading_summary)
+    print_summary(
+        stage_result["ingestion_result"],
+        stage_result["loading_summary"],
+    )
 
 
 if __name__ == "__main__":
