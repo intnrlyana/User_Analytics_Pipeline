@@ -14,11 +14,26 @@ CSV event logs
 
 ## Quick Start
 
-Run these commands from the project root on Windows:
+Run these commands from the project root.
+
+Windows:
 
 ```bash
 python -m venv venv
 venv\Scripts\activate
+pip install -r requirements.txt
+python src/generate_sample_data.py
+python src/profile_data.py
+python src/run_pipeline.py
+pytest
+uvicorn src.main:app --reload
+```
+
+macOS or Linux:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 python src/generate_sample_data.py
 python src/profile_data.py
@@ -33,7 +48,7 @@ Open Swagger UI at:
 http://localhost:8000/docs
 ```
 
-Generated files such as `data/user_analytics.db` and `logs/rejected_rows.csv` are ignored by git.
+The `uvicorn` command keeps the API server running in that terminal. Generated files such as `data/user_analytics.db` and `logs/rejected_rows.csv` are ignored by git.
 
 ## Implementation Coverage
 
@@ -53,36 +68,36 @@ Generated files such as `data/user_analytics.db` and `logs/rejected_rows.csv` ar
 
 ```text
 USER_ANALYTICS_PIPELINE/
-├── README.md
-├── requirements.txt
-├── data/
-│   └── sample_events.csv
-├── sql/
-│   └── schema.sql
-├── src/
-│   ├── __init__.py
-│   ├── api_schemas.py
-│   ├── config.py
-│   ├── database.py
-│   ├── generate_sample_data.py
-│   ├── ingestion.py
-│   ├── load_events.py
-│   ├── load_metrics.py
-│   ├── main.py
-│   ├── profile_data.py
-│   ├── query_service.py
-│   ├── run_ingestion.py
-│   ├── run_pipeline.py
-│   ├── run_transform.py
-│   ├── transform_metrics.py
-│   └── validation.py
-└── tests/
-    ├── __init__.py
-    ├── test_api.py
-    ├── test_load_events.py
-    ├── test_load_metrics.py
-    ├── test_transform_metrics.py
-    └── test_validation.py
+|-- README.md
+|-- requirements.txt
+|-- data/
+|   `-- sample_events.csv
+|-- sql/
+|   `-- schema.sql
+|-- src/
+|   |-- __init__.py
+|   |-- api_schemas.py
+|   |-- config.py
+|   |-- database.py
+|   |-- generate_sample_data.py
+|   |-- ingestion.py
+|   |-- load_events.py
+|   |-- load_metrics.py
+|   |-- main.py
+|   |-- profile_data.py
+|   |-- query_service.py
+|   |-- run_ingestion.py
+|   |-- run_pipeline.py
+|   |-- run_transform.py
+|   |-- transform_metrics.py
+|   `-- validation.py
+`-- tests/
+    |-- __init__.py
+    |-- test_api.py
+    |-- test_load_events.py
+    |-- test_load_metrics.py
+    |-- test_transform_metrics.py
+    `-- test_validation.py
 ```
 
 ## Database Choice
@@ -222,7 +237,7 @@ Swagger UI:
 http://localhost:8000/docs
 ```
 
-The project exposes analytics through REST endpoints. FastAPI’s Swagger UI is available for local API exploration and testing.
+The project exposes analytics through REST endpoints. FastAPI's Swagger UI is available for local API exploration and testing.
 
 ### GET /
 
@@ -317,6 +332,8 @@ Example response:
   "p95_latency_ms": 279.15
 }
 ```
+
+`p95_latency_ms` is calculated in Python from stored `response_time_ms` values using linear interpolation over the sorted latency list. SQLite does not provide a built-in percentile aggregate.
 
 Error handling:
 
