@@ -21,17 +21,21 @@ FIELDNAMES = [
 
 EVENT_TYPES = ["page_view", "button_click", "api_call"]
 DEVICE_TYPES = ["mobile", "desktop", "tablet"]
+TOTAL_SAMPLE_ROWS = 300
 
 
 def build_valid_rows() -> list[dict[str, object]]:
     random.seed(42)
     rows: list[dict[str, object]] = []
     base_time = datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc)
+    target_valid_rows = TOTAL_SAMPLE_ROWS - len(build_malformed_rows())
 
-    for session_number in range(1, 13):
+    session_number = 1
+    while len(rows) < target_valid_rows:
         session_token = f"session_{session_number:03d}_hash"
         device_type = random.choice(DEVICE_TYPES)
-        events_in_session = random.randint(7, 10)
+        remaining_rows = target_valid_rows - len(rows)
+        events_in_session = min(random.randint(7, 10), remaining_rows)
         session_start = base_time + timedelta(minutes=session_number * 8)
 
         for event_index in range(events_in_session):
@@ -49,6 +53,8 @@ def build_valid_rows() -> list[dict[str, object]]:
                 }
             )
 
+        session_number += 1
+
     return rows
 
 
@@ -61,6 +67,38 @@ def build_malformed_rows() -> list[dict[str, object]]:
             "timestamp": "2026-07-01T12:00:00Z",
             "device_type": "desktop",
             "response_time_ms": 140,
+        },
+        {
+            "event_id": "evt_0010",
+            "session_token": "session_duplicate_hash",
+            "event_type": "api_call",
+            "timestamp": "2026-07-01T12:00:30Z",
+            "device_type": "mobile",
+            "response_time_ms": 165,
+        },
+        {
+            "event_id": "evt_0025",
+            "session_token": "session_duplicate_hash",
+            "event_type": "button_click",
+            "timestamp": "2026-07-01T12:01:30Z",
+            "device_type": "tablet",
+            "response_time_ms": 120,
+        },
+        {
+            "event_id": "evt_0050",
+            "session_token": "session_duplicate_hash",
+            "event_type": "page_view",
+            "timestamp": "2026-07-01T12:02:30Z",
+            "device_type": "desktop",
+            "response_time_ms": 190,
+        },
+        {
+            "event_id": "evt_0100",
+            "session_token": "session_duplicate_hash",
+            "event_type": "api_call",
+            "timestamp": "2026-07-01T12:03:30Z",
+            "device_type": "mobile",
+            "response_time_ms": 210,
         },
         {
             "event_id": "evt_bad_missing_session",

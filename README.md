@@ -274,17 +274,17 @@ Example response:
 {
   "page": 1,
   "page_size": 20,
-  "total_sessions": 13,
-  "total_pages": 1,
+  "total_sessions": 36,
+  "total_pages": 2,
   "sessions": [
     {
       "session_token": "session_001_hash",
       "total_events": 7,
-      "session_duration_seconds": 360.0,
+      "session_duration_seconds": 445.0,
       "dominant_device": "tablet",
-      "average_latency_ms": 180.57,
+      "average_latency_ms": 176.57,
       "first_event_time": "2026-07-01T09:08:00Z",
-      "last_event_time": "2026-07-01T09:14:00Z"
+      "last_event_time": "2026-07-01T09:15:25Z"
     }
   ]
 }
@@ -300,11 +300,11 @@ Example response:
 {
   "session_token": "session_001_hash",
   "total_events": 7,
-  "session_duration_seconds": 360.0,
+  "session_duration_seconds": 445.0,
   "dominant_device": "tablet",
-  "average_latency_ms": 180.57,
+  "average_latency_ms": 176.57,
   "first_event_time": "2026-07-01T09:08:00Z",
-  "last_event_time": "2026-07-01T09:14:00Z"
+  "last_event_time": "2026-07-01T09:15:25Z"
 }
 ```
 
@@ -324,14 +324,14 @@ Example response:
 
 ```json
 {
-  "total_events": 98,
-  "average_session_duration_seconds": 332.31,
+  "total_events": 295,
+  "average_session_duration_seconds": 460.58,
   "event_type_breakdown": {
-    "api_call": 30,
-    "button_click": 33,
-    "page_view": 35
+    "api_call": 94,
+    "button_click": 100,
+    "page_view": 101
   },
-  "p95_latency_ms": 279.15
+  "p95_latency_ms": 261.0
 }
 ```
 
