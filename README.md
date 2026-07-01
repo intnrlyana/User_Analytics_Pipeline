@@ -1,92 +1,150 @@
 # User Analytics Pipeline
 
-## Project Overview
+USER_ANALYTICS_PIPELINE is a lightweight backend data pipeline for application event logs. It ingests raw CSV events, validates and cleans rows, stores valid events in SQLite, transforms them into session-level metrics, and exposes the results through a FastAPI REST API.
 
-USER_ANALYTICS_PIPELINE is a lightweight backend data pipeline for application event logs. The project is designed as a take-home assessment: clear structure, small focused modules, and enough implementation to show practical data engineering judgment without over-building.
-
-The intended flow is:
+The project is intentionally small and reviewer-friendly. The code is split by responsibility so each part of the pipeline can be inspected independently.
 
 ```text
-CSV event logs -> validation and cleaning -> SQLite storage -> session metrics -> FastAPI API
+CSV event logs
+-> validation and cleaning
+-> SQLite events table
+-> session_metrics transformation
+-> FastAPI API
 ```
 
-Stage 1 created the project foundation, database schema, sample data generator, and data profiling script. Stage 2 added CSV ingestion, row validation, rejected-row logging, and idempotent loading into SQLite. Stage 3 added session-level transformation and loading into `session_metrics`. Stage 4 adds a lightweight FastAPI serving layer.
+## Quick Start
+
+Run these commands from the project root on Windows:
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python src/generate_sample_data.py
+python src/profile_data.py
+python src/run_pipeline.py
+uvicorn src.main:app --reload
+pytest
+```
+
+Open Swagger UI after starting the API:
+
+```text
+http://localhost:8000/docs
+```
+
+Generated files such as `data/user_analytics.db` and `logs/rejected_rows.csv` are ignored by git.
 
 ## Assessment Mapping
 
-This project addresses the assessment objective by setting up the first pieces of an end-to-end analytics pipeline:
+| Requirement area | How this project satisfies it |
+| --- | --- |
+| Data exploration | `src/profile_data.py` reports nulls, duplicate `event_id` values, latency summary statistics, IQR outliers, event type counts, and device type counts. |
+| Data modelling | `sql/schema.sql` defines `events` for cleaned raw events and `session_metrics` for API-ready session aggregates. |
+| Ingestion | `src/ingestion.py` reads the CSV with pandas, validates required columns, validates each row, and separates accepted and rejected rows. |
+| Malformed row handling | Invalid rows are skipped and written to `logs/rejected_rows.csv` with a source row number and rejection reason. |
+| Loading | `src/load_events.py` inserts valid rows into SQLite using `INSERT OR IGNORE` so duplicate `event_id` values do not crash or duplicate data. |
+| Transformation | `src/transform_metrics.py` reads from the `events` table and computes session-level metrics. It does not recompute from CSV. |
+| Metrics loading | `src/load_metrics.py` upserts metrics into `session_metrics` using `session_token` as the conflict key. |
+| API serving | `src/main.py` exposes `GET /sessions`, `GET /sessions/{token}`, and `GET /metrics/summary`. |
+| Testing | `tests/` covers validation, event loading idempotency, metric transformation, metric upsert behavior, API responses, pagination validation, 404 behavior, and empty database responses. |
 
-- Ingest raw application events from CSV.
-- Profile data quality before loading.
-- Store raw events and session-level metrics in a relational database.
-- Prepare the codebase for validation, transformation, and API access.
+## Repository Structure
 
-The current project exposes the prepared analytics through a queryable REST API.
-
-## Architecture Overview
-
-The project is organized around one responsibility per file:
-
-- `data/sample_events.csv`: small synthetic event log dataset.
-- `src/config.py`: central project paths.
-- `src/database.py`: SQLite connection and schema initialization.
-- `src/generate_sample_data.py`: creates realistic sample CSV data with known bad rows.
-- `src/validation.py`: validates and cleans individual event rows.
-- `src/ingestion.py`: reads CSV data and separates valid rows from rejected rows.
-- `src/load_events.py`: loads valid events into SQLite safely.
-- `src/run_ingestion.py`: command-line entry point for Stage 2 ingestion.
-- `src/transform_metrics.py`: computes session-level metrics from stored events.
-- `src/load_metrics.py`: upserts transformed metrics into SQLite.
-- `src/run_transform.py`: command-line entry point for Stage 3 transformation.
-- `src/run_pipeline.py`: runs ingestion, event loading, transformation, and metric loading.
-- `src/query_service.py`: database read/query layer for API endpoints.
-- `src/api_schemas.py`: Pydantic response models.
-- `src/main.py`: FastAPI application and route definitions.
-- `src/profile_data.py`: prints data quality checks for the CSV.
-- `sql/schema.sql`: relational database schema.
-- `tests/`: lightweight pytest coverage for validation, loading, transformation logic, and API behavior.
-
-Future stages could add deployment packaging, authentication, and richer monitoring.
+```text
+USER_ANALYTICS_PIPELINE/
+├── README.md
+├── requirements.txt
+├── data/
+│   └── sample_events.csv
+├── sql/
+│   └── schema.sql
+├── src/
+│   ├── __init__.py
+│   ├── api_schemas.py
+│   ├── config.py
+│   ├── database.py
+│   ├── generate_sample_data.py
+│   ├── ingestion.py
+│   ├── load_events.py
+│   ├── load_metrics.py
+│   ├── main.py
+│   ├── profile_data.py
+│   ├── query_service.py
+│   ├── run_ingestion.py
+│   ├── run_pipeline.py
+│   ├── run_transform.py
+│   ├── transform_metrics.py
+│   └── validation.py
+└── tests/
+    ├── __init__.py
+    ├── test_api.py
+    ├── test_load_events.py
+    ├── test_load_metrics.py
+    ├── test_transform_metrics.py
+    └── test_validation.py
+```
 
 ## Database Choice
 
-SQLite is used for this assessment because it is free, serverless, lightweight, and easy for reviewers to run locally. It works well for a CSV-based batch pipeline and keeps setup friction low.
+SQLite is used because it is free, lightweight, serverless, and easy for reviewers to run locally. It is a good fit for this CSV-based batch assessment because there is no database server to install.
 
-For a larger production deployment, PostgreSQL would be a better upgrade. PostgreSQL provides stronger concurrency support, richer indexing options, better operational tooling, stricter production-grade access control, and better support for larger workloads.
+For a larger production deployment, PostgreSQL would be the preferred upgrade. It offers stronger concurrency support, better operational tooling, richer indexing options, and more production-ready access control.
 
 ## Database Schema
 
-The database contains two main tables.
+`events` stores cleaned raw event records:
 
-`events` stores cleaned raw event records. It keeps one row per event and uses `event_id` as the primary key to prevent duplicate event ingestion.
+- `event_id` is the primary key and prevents duplicate raw event ingestion.
+- `session_token` links events into a user session without storing personal identifiers.
+- `event_type`, `timestamp`, `device_type`, and `response_time_ms` keep the fields needed for behavioral metrics.
+- `ingested_at` records when SQLite inserted the event.
 
-`session_metrics` stores aggregated behavioral metrics for each session. It is designed to support API queries without recalculating session statistics on every request.
+`session_metrics` stores one aggregate row per session:
 
-Indexes are included for common query patterns:
+- `session_token` is the primary key.
+- `total_events` counts valid events in the session.
+- `session_duration_seconds` stores the time between first and last event.
+- `dominant_device` stores the most frequent device type.
+- `average_latency_ms` stores average backend latency.
+- `first_event_time` and `last_event_time` support timeline queries.
+- `updated_at` changes when a metrics row is refreshed.
 
-- `events(session_token)`: speeds up lookup of all events for a session.
-- `events(timestamp)`: supports time-based filtering and ordering.
-- `events(event_type)`: supports event-type breakdowns and filters.
-- `session_metrics(average_latency_ms)`: supports latency-based ranking and filtering.
+Indexes:
+
+- `events(session_token)` speeds up session lookups.
+- `events(timestamp)` supports time-based filtering and ordering.
+- `events(event_type)` supports event-type breakdowns.
+- `session_metrics(average_latency_ms)` supports latency-based filtering and ranking.
 
 ## Data Profiling
 
-The profiling script reads `data/sample_events.csv` and reports:
+Run:
+
+```bash
+python src/profile_data.py
+```
+
+The profiling script reports:
 
 - total row count
 - missing values by column
 - duplicate `event_id` count
 - invalid or negative `response_time_ms` count
 - response time summary statistics
-- simple IQR-based latency outlier detection
+- IQR-based latency outlier count
 - `event_type` breakdown
 - `device_type` breakdown
 
-This gives a reviewer a quick view of data quality before any cleaning or loading happens.
+Very high latency values are profiled as outliers, not automatically rejected.
 
-## Stage 2: Ingestion and Validation
+## Ingestion and Validation
 
-Stage 2 reads `data/sample_events.csv`, validates the expected schema, cleans valid rows, writes malformed rows to `logs/rejected_rows.csv`, and loads valid events into the `events` table.
+Run ingestion only:
+
+```bash
+python src/run_ingestion.py
+```
 
 Validation rules:
 
@@ -95,73 +153,58 @@ Validation rules:
 - `timestamp` must be parseable as an ISO 8601 timestamp with timezone information.
 - `device_type` must be `mobile`, `desktop`, or `tablet`. Input is accepted case-insensitively and stored in lowercase.
 - `response_time_ms` must be an integer greater than or equal to zero.
-- Very high `response_time_ms` values are kept during ingestion. They are treated as profiling outliers, not invalid records.
 
-Malformed rows are skipped instead of crashing the pipeline. Each rejected row is written with its source row number and rejection reason so the issue can be reviewed later.
+Malformed rows are skipped instead of crashing the pipeline. Rejected rows are written to `logs/rejected_rows.csv` with a source row number and reason.
 
-Loading is idempotent because `event_id` is the primary key and inserts use SQLite `INSERT OR IGNORE`. Re-running the same CSV will not duplicate events; duplicate `event_id` values are counted as skipped duplicates.
+Event loading is idempotent because `event_id` is the primary key and `src/load_events.py` uses SQLite `INSERT OR IGNORE`.
 
-Run Stage 2 ingestion:
+## Session Metrics Transformation
 
-```bash
-python src/run_ingestion.py
-```
-
-Expected terminal output includes:
-
-- total rows read
-- valid row count
-- rejected row count
-- rejection reason summary
-- attempted inserts
-- inserted rows
-- skipped duplicates
-- rejected-row log location
-
-## Stage 3: Session Metrics Transformation
-
-Stage 3 reads valid events from the SQLite `events` table and computes one metrics row per `session_token`. It does not recompute metrics directly from the CSV. This keeps ingestion and transformation separate and makes the database the source of truth after validation.
-
-Aggregation logic:
-
-- `total_events`: count all stored events for the session.
-- `first_event_time`: earliest event timestamp for the session.
-- `last_event_time`: latest event timestamp for the session.
-- `session_duration_seconds`: difference between `last_event_time` and `first_event_time` in seconds. A one-event session has duration `0`.
-- `dominant_device`: most frequent `device_type` in the session. Ties are resolved alphabetically, so `desktop` comes before `mobile`, and `mobile` comes before `tablet`.
-- `average_latency_ms`: average `response_time_ms`, rounded to two decimal places. Valid high-latency outliers are included in the average.
-
-Metrics loading is idempotent. The `session_metrics` table uses `session_token` as the primary key, and loading uses SQLite upsert logic:
-
-```sql
-INSERT ... ON CONFLICT(session_token) DO UPDATE
-```
-
-Re-running the transformation updates the existing metrics row for each session instead of creating duplicates.
-
-Run ingestion only when the CSV has changed or the `events` table needs to be populated:
-
-```bash
-python src/run_ingestion.py
-```
-
-Run transformation only when valid events are already loaded and session metrics need to be refreshed:
+Run transformation only after events have been loaded:
 
 ```bash
 python src/run_transform.py
 ```
 
-Run the full local pipeline when you want ingestion, validation, event loading, transformation, and metrics loading in one command:
+The transformation reads from the `events` table, not directly from CSV.
+
+Aggregation logic:
+
+- `total_events`: count all stored events for the session.
+- `first_event_time`: earliest event timestamp.
+- `last_event_time`: latest event timestamp.
+- `session_duration_seconds`: difference between last and first event in seconds. A one-event session has duration `0`.
+- `dominant_device`: most frequent `device_type`; ties are resolved alphabetically.
+- `average_latency_ms`: average `response_time_ms`, rounded to two decimal places. Valid high-latency outliers are included.
+
+Metrics loading is idempotent because `session_metrics.session_token` is the primary key and loading uses:
+
+```sql
+INSERT ... ON CONFLICT(session_token) DO UPDATE
+```
+
+## Full Local Pipeline
+
+Run the complete local flow:
 
 ```bash
 python src/run_pipeline.py
 ```
 
-## Stage 4: API Design and Serving Layer
+This command:
 
-Stage 4 adds a small FastAPI app on top of SQLite. The API reads from the database only; it does not trigger ingestion or transformation automatically.
+- initializes the SQLite schema
+- ingests and validates `data/sample_events.csv`
+- writes rejected rows to `logs/rejected_rows.csv`
+- loads valid events into `events`
+- transforms session metrics from stored events
+- upserts results into `session_metrics`
 
-Prepare data before starting the API:
+The command is safe to rerun. Existing events are not duplicated, and session metrics are refreshed.
+
+## API Design and Serving Layer
+
+Prepare data first:
 
 ```bash
 python src/run_pipeline.py
@@ -173,17 +216,17 @@ Start the API:
 uvicorn src.main:app --reload
 ```
 
-Open Swagger UI:
+Swagger UI:
 
 ```text
 http://localhost:8000/docs
 ```
 
-No frontend is required for this assessment. The deliverable is a queryable API, and FastAPI's Swagger UI is enough to inspect and test the endpoints locally.
+No frontend is required. The assessment asks for a queryable API, and FastAPI Swagger UI is enough to inspect and test the endpoints locally.
 
 ### GET /
 
-Health and API information endpoint.
+Health and endpoint information.
 
 Example response:
 
@@ -201,7 +244,7 @@ Example response:
 
 ### GET /sessions
 
-Lists session metrics from `session_metrics`.
+Lists records from `session_metrics`.
 
 Query parameters:
 
@@ -232,7 +275,7 @@ Example response:
 
 ### GET /sessions/{token}
 
-Returns one session metrics record by `session_token`.
+Retrieves metrics for one `session_token`.
 
 Example response:
 
@@ -248,9 +291,17 @@ Example response:
 }
 ```
 
+Missing token response:
+
+```json
+{
+  "detail": "Session not found: unknown_session"
+}
+```
+
 ### GET /metrics/summary
 
-Returns dataset-wide metrics using both `events` and `session_metrics`.
+Returns dataset-wide aggregates from `events` and `session_metrics`.
 
 Example response:
 
@@ -267,58 +318,34 @@ Example response:
 }
 ```
 
-API error handling:
+Error handling:
 
-- Missing session token: `404` with a clear message.
-- Invalid pagination parameters: `422` through FastAPI request validation.
-- Empty database: `/sessions` returns an empty list, and `/metrics/summary` returns zero values with `p95_latency_ms` as `null`.
+- Missing session token returns `404`.
+- Invalid pagination returns `422` through FastAPI request validation.
+- Empty database returns clean empty or zero values. `/sessions` returns an empty list, and `/metrics/summary` returns `total_events: 0`, an empty event breakdown, and `p95_latency_ms: null`.
 
-## How to Run Stage 1
+## Testing
 
-Create and activate a virtual environment if needed, then install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Generate the sample CSV:
+Run all tests:
 
 ```bash
-python src/generate_sample_data.py
+pytest
 ```
 
-Profile the sample data:
+The tests use temporary SQLite databases where needed, so they do not require a manually created local database.
 
-```bash
-python src/profile_data.py
-```
+## Known Assumptions
 
-Initialize the SQLite database:
-
-```bash
-python -c "from src.database import initialise_database; initialise_database()"
-```
-
-The database file is created at `data/user_analytics.db`.
-
-## Planned Next Steps
-
-- Add packaging notes for deployment.
-- Add authentication and rate limiting if the API is exposed outside local review.
+- Input CSV files follow the expected event log schema.
+- Timestamps are expected to include timezone information and are normalized to UTC.
+- Very high latency values are treated as valid outliers, not rejected records.
+- Duplicate `event_id` rows are ignored to keep ingestion idempotent.
+- SQLite is used for local assessment reproducibility.
+- The API serves already-prepared data; it does not trigger ingestion or transformation on request.
 
 ## Production Considerations
 
-For production, this design would need stronger operational support:
-
-- Use PostgreSQL instead of SQLite for concurrent reads and writes.
-- Add structured logging and pipeline run metadata.
-- Track rejected records with clear error reasons.
-- Add database migrations instead of manually running one schema file.
-- Add automated tests in CI.
-- Add API authentication and rate limiting.
-- Add monitoring for data freshness, volume changes, and latency outliers.
-
-Production orchestration would look like:
+Production orchestration could follow this flow:
 
 ```text
 CSV available
@@ -330,13 +357,22 @@ CSV available
 -> transform session metrics
 -> upsert session_metrics
 -> API serves updated results
--> logs, retries, and alerts in production
+-> logs, retries, and alerts
 ```
 
-In local development, run the full flow manually:
+In local development, run the flow manually with:
 
 ```bash
 python src/run_pipeline.py
 ```
 
-In production, the same flow could be scheduled using cron, Airflow, GitHub Actions, or a containerised job. Failed runs should be logged and alerted. Idempotency is achieved through `event_id` uniqueness in `events` and `session_token` upserts in `session_metrics`.
+In production, this could be scheduled using cron, Airflow, GitHub Actions, or a containerized job. Failed runs should be logged and alerted. Idempotency is handled by `event_id` uniqueness in `events` and `session_token` upserts in `session_metrics`.
+
+Additional production improvements:
+
+- Move from SQLite to PostgreSQL for concurrent workloads.
+- Add structured logging and pipeline run metadata.
+- Store rejected row history with error categories.
+- Use database migrations instead of one schema file.
+- Add authentication and rate limiting for external API access.
+- Add monitoring for data freshness, volume changes, and latency outliers.

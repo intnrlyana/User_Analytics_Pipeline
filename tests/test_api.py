@@ -1,5 +1,5 @@
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from src import database
 from src.main import app
@@ -12,6 +12,15 @@ def client(tmp_path, monkeypatch):
 
     with TestClient(app) as test_client:
         seed_test_database()
+        yield test_client
+
+
+@pytest.fixture()
+def empty_client(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "empty_api_test.db")
+    monkeypatch.setattr(database, "DATA_DIR", tmp_path)
+
+    with TestClient(app) as test_client:
         yield test_client
 
 
@@ -112,3 +121,24 @@ def test_get_metrics_summary_returns_top_level_fields(client):
     assert "average_session_duration_seconds" in body
     assert "event_type_breakdown" in body
     assert "p95_latency_ms" in body
+
+
+def test_empty_database_returns_clean_responses(empty_client):
+    sessions_response = empty_client.get("/sessions")
+    summary_response = empty_client.get("/metrics/summary")
+
+    assert sessions_response.status_code == 200
+    assert sessions_response.json() == {
+        "page": 1,
+        "page_size": 20,
+        "total_sessions": 0,
+        "total_pages": 0,
+        "sessions": [],
+    }
+    assert summary_response.status_code == 200
+    assert summary_response.json() == {
+        "total_events": 0,
+        "average_session_duration_seconds": 0.0,
+        "event_type_breakdown": {},
+        "p95_latency_ms": None,
+    }
