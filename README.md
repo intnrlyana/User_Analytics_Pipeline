@@ -53,6 +53,13 @@ pytest
 uvicorn src.main:app --reload
 ```
 
+Command notes:
+
+- `generate_sample_data.py` creates `data/sample_events.csv`.
+- `profile_data.py` prints data quality checks.
+- `run_pipeline.py` prepares the SQLite database and session metrics.
+- `uvicorn src.main:app --reload` starts the API.
+
 Open Swagger UI at:
 
 ```text
@@ -398,7 +405,7 @@ In local development, run the flow manually with:
 python src/run_pipeline.py
 ```
 
-In production, this could be scheduled using cron, Airflow, GitHub Actions, or a containerized job. Failed runs should be logged and alerted. Idempotency is handled by `event_id` uniqueness in `events` and `session_token` upserts in `session_metrics`.
+In production, this could be scheduled using cron, Airflow, GitHub Actions or a containerized job. Failed runs should be logged and alerted. Idempotency is handled by `event_id` uniqueness in `events` and `session_token` upserts in `session_metrics`.
 
 ### Challenges and Future Improvements
 
