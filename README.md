@@ -1,8 +1,8 @@
-# User Analytics Pipeline
+# Event-Driven User Analytics Pipeline
 
-USER_ANALYTICS_PIPELINE is a lightweight backend data pipeline for application event logs. It ingests raw CSV events, validates and cleans rows, stores valid events in SQLite, transforms them into session-level metrics, and exposes the results through a FastAPI REST API.
+User Analytics Pipeline is a lightweight backend data pipeline for application event logs. It ingests raw CSV events, validates and cleans rows, stores valid events in SQLite, transforms them into session-level metrics and exposes the results through a FastAPI REST API.
 
-The project is intentionally small, modular, and easy to run in a local development environment. The code is split by responsibility so each part of the pipeline can be inspected independently.
+The pipeline is kept small and easy to run locally. The code is split by responsibility so each part can be run, checked and tested independently, which aim to be modular pipeline system.
 
 ## Architecture Overview
 
@@ -19,6 +19,8 @@ flowchart TD
 ```
 
 ## Quick Start
+
+Requires Python 3.10 or newer.
 
 Run these commands from the project root.
 
@@ -58,7 +60,7 @@ The `uvicorn` command keeps the API server running in that terminal. Generated f
 
 ## Implementation Coverage
 
-| Requirement area | How this project satisfies it |
+| Requirement area | Approaches to satisfy |
 | --- | --- |
 | Data exploration | `src/profile_data.py` reports nulls, duplicate `event_id` values, latency summary statistics, IQR outliers, event type counts, and device type counts. |
 | Data modelling | `sql/schema.sql` defines `events` for cleaned raw events and `session_metrics` for API-ready session aggregates. |
@@ -67,22 +69,21 @@ The `uvicorn` command keeps the API server running in that terminal. Generated f
 | Loading | `src/load_events.py` inserts valid rows into SQLite using `INSERT OR IGNORE` so duplicate `event_id` values do not crash or duplicate data. |
 | Transformation | `src/transform_metrics.py` reads from the `events` table and computes session-level metrics. It does not recompute from CSV. |
 | Metrics loading | `src/load_metrics.py` upserts metrics into `session_metrics` using `session_token` as the conflict key. |
-| API serving | `src/main.py` exposes `GET /sessions`, `GET /sessions/{token}`, and `GET /metrics/summary`. |
-| Testing | `tests/` covers validation, event loading idempotency, metric transformation, metric upsert behavior, API responses, pagination validation, 404 behavior, and empty database responses. |
+| API serving | `src/main.py` exposes `GET /sessions`, `GET /sessions/{token}` and `GET /metrics/summary`. |
+| Testing | `tests/` covers validation, event loading idempotency, metric transformation, metric upsert behavior, API responses, pagination validation, 404 behavior and empty database responses. |
 
 ## Design Rationale
 
-| Design choice | Why it was chosen | Tradeoff or consideration |
+| Design choice | Why it was chosen | Tradeoff |
 | --- | --- | --- |
-| CSV batch ingestion | The source data is a raw event log export, so a batch CSV reader keeps the pipeline easy to run and inspect locally. | For streaming or near-real-time analytics, this would move to a queue or event bus. |
-| Pandas for CSV reading and profiling | Pandas is lightweight enough for this dataset and gives clear support for CSV loading, null checks, duplicate checks, and summary statistics. | For very large files, chunked reads or a distributed processing tool would be safer. |
-| Explicit row validation before loading | Invalid data is easier to reason about before it reaches the database. This keeps the `events` table clean and predictable for downstream metrics. | Validation rules need to evolve if the source event schema changes. |
-| Log and skip malformed rows | A few bad rows should not stop the entire batch. Rejected rows are kept separately so they can be reviewed without blocking valid data. | In production, rejected rows should be stored with richer metadata and monitored for spikes. |
-| SQLite database | SQLite keeps local setup simple and reproducible while still using real relational tables, primary keys, indexes, and SQL queries. | PostgreSQL is a better fit for higher concurrency, larger datasets, and operational controls. |
-| Separate `events` and `session_metrics` tables | Raw cleaned events are preserved for auditability, while pre-aggregated session metrics make API reads simple and fast. | Metrics must be refreshed when new events are loaded. |
-| Precompute session metrics | The API can serve session analytics without recalculating every metric on each request. This matches the read-heavy serving pattern. | If users need fully real-time metrics, transformation would need to run more frequently or move closer to ingestion. |
-| Idempotent loading | `event_id` prevents duplicate event inserts, and `session_token` upserts refresh metrics safely. This makes reruns safe after failures or repeated local testing. | If the same `event_id` arrives with corrected data, a deliberate update strategy would be needed. |
-| FastAPI serving layer | FastAPI provides concise route definitions, request validation, response models, and Swagger documentation with minimal setup. | Production deployment would need authentication, rate limiting, and operational monitoring. |
+| CSV batch ingestion | The source is a raw event log export, so CSV keeps the local workflow easy to run and inspect. | Streaming analytics would need a queue or event bus. |
+| Pandas for CSV reading and profiling | Pandas gives clear support for loading, null checks, duplicates, and summary statistics. | Very large files would need chunking or a distributed tool. |
+| Explicit row validation before loading | Invalid data is easier to explain and reject before it reaches the database. | Validation rules must evolve with source schema changes. |
+| Log and skip malformed rows | A few bad rows should not stop the batch, and rejected rows remain reviewable. | Production handling would need more context for each rejected row. |
+| SQLite database | SQLite keeps setup simple while still using relational tables, keys, indexes, and SQL queries. | Higher concurrency or larger deployments would need PostgreSQL. |
+| Separate `events` and `session_metrics` tables | Cleaned raw events remain auditable, while precomputed metrics keep API reads simple. | Metrics must be refreshed when new events are loaded. |
+| Idempotent loading | `event_id` ignores duplicate events, and `session_token` upserts refresh metrics safely. | Corrected duplicate events would need an explicit update strategy. |
+| FastAPI serving layer | FastAPI provides concise routes, request validation, response models, and Swagger documentation. | A public API would need authentication, rate limits, and request logging. |
 
 ## Repository Structure
 
@@ -126,7 +127,7 @@ USER_ANALYTICS_PIPELINE/
 
 SQLite is used because it is free, lightweight, serverless, and easy to run locally without a separate database server. It is a good fit for this CSV-based batch pipeline because ingestion runs in batches and the API primarily serves read queries over prepared metrics.
 
-For a larger production deployment, PostgreSQL would be the preferred upgrade. It offers stronger concurrency support, better operational tooling, richer indexing options, and more production-ready access control.
+For a larger production deployment, PostgreSQL would be the preferred upgrade. It handles concurrency better and has stronger support for backups, permissions, and indexing.
 
 ## Database Schema
 
@@ -173,7 +174,7 @@ The profiling script reports:
 - `event_type` breakdown
 - `device_type` breakdown
 
-Very high latency values are profiled as outliers, not automatically rejected.
+Very high latency values are profiled as outliers, will not automatically rejected.
 
 ## Ingestion and Validation
 
@@ -237,7 +238,7 @@ This command:
 - transforms session metrics from stored events
 - upserts results into `session_metrics`
 
-The command is safe to rerun. Existing events are not duplicated, and session metrics are refreshed.
+The command is safe to rerun. Existing events are not being duplicated and session metrics are refreshed.
 
 ## API Design and Serving Layer
 
@@ -396,15 +397,13 @@ python src/run_pipeline.py
 
 In production, this could be scheduled using cron, Airflow, GitHub Actions, or a containerized job. Failed runs should be logged and alerted. Idempotency is handled by `event_id` uniqueness in `events` and `session_token` upserts in `session_metrics`.
 
-### Challenges and Future Improvement Considerations
+### Challenges and Future Improvements
 
 | Area | Potential challenge | Future improvement |
 | --- | --- | --- |
-| Database scalability | SQLite is simple and reliable for local batch processing, but it is not ideal for many concurrent writers or larger production workloads. | Move to PostgreSQL for stronger concurrency, operational tooling, access control, backups, and richer indexing options. |
-| Pipeline observability | The local pipeline prints summaries to the terminal, but production runs need durable logs for debugging and auditability. | Add structured logging, pipeline run IDs, row counts, runtime duration, and success or failure status for each run. |
-| Rejected data handling | Rejected rows are written to one CSV file, which is enough locally but can be overwritten or become hard to analyze over time. | Store rejected rows in a dedicated table or timestamped files with error categories, source filename, and pipeline run ID. |
-| Schema evolution | A single `schema.sql` file is simple, but production databases need controlled changes over time. | Use migrations so table and index changes can be versioned, reviewed, and rolled back safely. |
-| API security | The current API is designed for local use and does not include authentication. | Add authentication, authorization, rate limiting, and request logging before exposing the API outside a trusted environment. |
-| Data freshness | The API serves prepared metrics, so stale results are possible if ingestion or transformation fails. | Add freshness checks, last-successful-run metadata, alerts for missed schedules, and dashboard monitoring. |
-| Data quality drift | New event types, unexpected devices, or latency spikes could appear as the source system changes. | Add automated data quality checks and alerts for schema drift, volume changes, rejection spikes, and latency outliers. |
-| Operational reliability | Scheduled jobs can fail because of missing files, malformed inputs, environment issues, or database locks. | Add retries where safe, clear alerting, failure notifications, and runbooks for investigation. |
+| Database scalability | SQLite is not intended for high-concurrency production workloads. | Move to PostgreSQL for stronger concurrency, backups, access control and operational tooling. |
+| Pipeline observability | Terminal summaries are useful locally but production runs should keep logs for later debugging. | Add structured logs, run IDs, row counts, runtime duration and success or failure status. |
+| Rejected data handling | A single rejected-rows CSV can become hard to analyze over time. | Store rejected rows in a table or timestamped files with error categories and source metadata. |
+| Schema evolution | A single `schema.sql` file does not manage database changes over time. | Use migrations so schema changes can be versioned, reviewed and rolled back. |
+| API security | The current API is designed for local use. | Add authentication, authorization, rate limiting and request logging before public deployment. |
+| Data freshness and reliability | The API depends on prepared metrics, so failed or missed runs can leave stale results. | Track last successful runs, add alerts and use retries where safe. |

@@ -20,7 +20,7 @@ from src.query_service import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure tables exist before the API starts serving database-backed routes.
+    # Ensure tables exist. If not yet exist, create database tables on startup.
     initialise_database()
     yield
 
@@ -86,6 +86,7 @@ def read_sessions(
 def read_session(token: str) -> dict[str, Any]:
     session = get_session_by_token(token)
 
+    # Return 404 if session token not foundd
     if session is None:
         raise HTTPException(
             status_code=404,
