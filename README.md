@@ -10,12 +10,15 @@ The pipeline is kept small and easy to run locally. The code is split by respons
 flowchart TD
     A["Raw CSV events<br/>data/sample_events.csv"] --> B["Ingestion<br/>src/ingestion.py"]
     B --> C["Validation and cleaning<br/>src/validation.py"]
-    C --> D["Rejected rows log<br/>logs/rejected_rows.csv"]
-    C --> E[("SQLite events table")]
-    E --> F["Session metrics transformation<br/>src/transform_metrics.py"]
-    F --> G[("SQLite session_metrics table")]
-    G --> H["Query service<br/>src/query_service.py"]
-    H --> I["FastAPI API<br/>GET /sessions<br/>GET /sessions/{token}<br/>GET /metrics/summary"]
+    C -->|Invalid rows| D["Rejected rows log<br/>logs/rejected_rows.csv"]
+    C -->|Valid rows| E["Load events<br/>src/load_events.py"]
+    E --> F[("SQLite events table")]
+    F --> G["Session metrics transformation<br/>src/transform_metrics.py"]
+    G --> H["Load metrics<br/>src/load_metrics.py"]
+    H --> I[("SQLite session_metrics table")]
+    F --> J["Query service<br/>src/query_service.py"]
+    I --> J
+    J --> K["FastAPI API<br/>src/main.py<br/>GET /sessions<br/>GET /sessions/{token}<br/>GET /metrics/summary"]
 ```
 
 ## Quick Start
