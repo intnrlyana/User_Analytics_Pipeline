@@ -361,7 +361,7 @@ Example response:
 Error handling:
 
 - Missing session token returns `404`.
-- Invalid pagination returns `422` through FastAPI request validation.
+- Invalid pagination returns `422` through FastAPI request validation. Swagger UI may block invalid values before sending the request; to test directly, call http://localhost:8000/sessions?page=0&page_size=200.
 - Empty database returns clean empty or zero values. `/sessions` returns an empty list, and `/metrics/summary` returns `total_events: 0`, an empty event breakdown, and `p95_latency_ms: null`.
 
 ## Testing
